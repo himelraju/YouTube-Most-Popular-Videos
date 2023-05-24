@@ -113,7 +113,7 @@
   <script>
     // YouTube API Key (Replace with your own)
     const API_KEY = 'AIzaSyB-8BDOg8abHE_p8oIs0NNGd_rjcWvzSqY';
-    let nextPageToken = null;
+    let nextPageToken = true;
     let currentKeyword = '';
 
 // Search button click event handler
@@ -121,18 +121,17 @@ document.getElementById('search-button').addEventListener('click', function() {
   currentKeyword = document.getElementById('search-input').value;
   searchVideos(currentKeyword);
 });
-
-
     // Load more button click event handler
     document.getElementById('load-more-button').addEventListener('click', function() {
-      searchVideos(currentKeyword);
-    });
+  searchVideos(currentKeyword, nextPageToken);
+});
 
 // Function to search videos on YouTube API
-function searchVideos(keyword) {
-  // Clear previous results
-  document.getElementById('results-container').innerHTML = '';
-  nextPageToken = null;
+function searchVideos(keyword, pageToken = '') {
+  // Clear previous results if it's the first page
+  if (pageToken === '') {
+    document.getElementById('results-container').innerHTML = '';
+  }
 
   // Make API request to search videos
   const searchRequest = gapi.client.youtube.search.list({
@@ -141,50 +140,48 @@ function searchVideos(keyword) {
     type: 'video',
     order: 'viewCount',
     maxResults: 10,
-    pageToken: nextPageToken
+    pageToken: pageToken
   });
 
-  // Rest of the code remains the same...
+  searchRequest.execute(function(searchResponse) {
+    const videos = searchResponse.result.items;
+    nextPageToken = searchResponse.result.nextPageToken;
 
+    const videoIds = videos.map(function(video) {
+      return video.id.videoId;
+    });
 
-      searchRequest.execute(function(searchResponse) {
-        const videos = searchResponse.result.items;
-        nextPageToken = searchResponse.result.nextPageToken;
+    // Make API request to get video statistics
+    const statsRequest = gapi.client.youtube.videos.list({
+      part: 'snippet,statistics',
+      id: videoIds.join(',')
+    });
 
-        const videoIds = videos.map(function(video) {
-          return video.id.videoId;
+    statsRequest.execute(function(statsResponse) {
+      const videoStats = statsResponse.result.items;
+
+      // Display video results with channel name, view counts, and likes
+      videos.forEach(function(video) {
+        const videoId = video.id.videoId;
+        const stats = videoStats.find(function(item) {
+          return item.id === videoId;
         });
 
-        // Make API request to get video statistics
-        const statsRequest = gapi.client.youtube.videos.list({
-          part: 'snippet,statistics',
-          id: videoIds.join(',')
-        });
-
-        statsRequest.execute(function(statsResponse) {
-          const videoStats = statsResponse.result.items;
-
-          // Display video results with channel name, view counts, and likes
-          videos.forEach(function(video) {
-            const videoId = video.id.videoId;
-            const stats = videoStats.find(function(item) {
-              return item.id === videoId;
-            });
-
-            const videoItem = createVideoItem(video, stats);
-            document.getElementById('results-container').appendChild(videoItem);
-          });
-
-          // Show/hide the load more button based on the presence of next page token
-          const loadMoreButton = document.getElementById('load-more-button');
-          if (nextPageToken) {
-            loadMoreButton.style.display = 'block';
-          } else {
-            loadMoreButton.style.display = 'none';
-          }
-        });
+        const videoItem = createVideoItem(video, stats);
+        document.getElementById('results-container').appendChild(videoItem);
       });
-    }
+
+      // Show/hide the load more button based on the presence of next page token
+      const loadMoreButton = document.getElementById('load-more-button');
+      if (nextPageToken) {
+        loadMoreButton.style.display = 'block';
+      } else {
+        loadMoreButton.style.display = 'none';
+      }
+    });
+  });
+}
+
 
     // Function to create a video item element
     function createVideoItem(video, stats) {
