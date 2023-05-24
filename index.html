@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>YouTube Most Popular Videos</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background-color: #f8f8f8;
+    }
+
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+
+    #search-container {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    #search-input {
+      padding: 8px;
+      width: 300px;
+      font-size: 16px;
+    }
+
+    #search-button {
+      padding: 8px 16px;
+      font-size: 16px;
+      background-color: #333;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+    }
+
+    #results-container {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .video-item {
+      width: 300px;
+      margin: 10px;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      background-color: #fff;
+      box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.1);
+      cursor: pointer;
+      transition: transform 0.2s ease-in-out;
+    }
+
+    .video-item:hover {
+      transform: translateY(-3px);
+    }
+
+    .video-item img {
+      width: 100%;
+      height: auto;
+      border-radius: 5px;
+    }
+
+    .video-item h3 {
+      margin-top: 10px;
+      font-size: 16px;
+      color: #333;
+    }
+
+    .video-item .channel {
+      font-size: 14px;
+      color: #888;
+    }
+
+    .video-item .views {
+      font-size: 14px;
+      color: #888;
+    }
+
+    .video-item .likes {
+      font-size: 14px;
+      color: #888;
+    }
+
+    #load-more-button {
+      display: none;
+      margin: 20px auto;
+      padding: 10px 16px;
+      font-size: 16px;
+      background-color: #333;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.2s ease-in-out;
+    }
+
+    #load-more-button:hover {
+      background-color: #555;
+    }
+  </style>
+</head>
+<body>
+  <h1>YouTube Most Popular Videos</h1>
+  <div id="search-container">
+    <input type="text" id="search-input" placeholder="Enter search keyword">
+    <button id="search-button">Search</button>
+  </div>
+  <div id="results-container"></div>
+  <button id="load-more-button">Load More</button>
+
+  <script src="https://apis.google.com/js/api.js"></script>
+  <script>
+    // YouTube API Key (Replace with your own)
+    const API_KEY = 'AIzaSyCbgy7kJWkjXWHp194LguIiJgEky4wSF14';
+    let nextPageToken = null;
+    let currentKeyword = '';
+
+// Search button click event handler
+document.getElementById('search-button').addEventListener('click', function() {
+  currentKeyword = document.getElementById('search-input').value;
+  searchVideos(currentKeyword);
+});
+
+
+    // Load more button click event handler
+    document.getElementById('load-more-button').addEventListener('click', function() {
+      searchVideos(currentKeyword);
+    });
+
+// Function to search videos on YouTube API
+function searchVideos(keyword) {
+  // Clear previous results
+  document.getElementById('results-container').innerHTML = '';
+  nextPageToken = null;
+
+  // Make API request to search videos
+  const searchRequest = gapi.client.youtube.search.list({
+    part: 'snippet',
+    q: keyword,
+    type: 'video',
+    order: 'viewCount',
+    maxResults: 10,
+    pageToken: nextPageToken
+  });
+
+  // Rest of the code remains the same...
+
+
+      searchRequest.execute(function(searchResponse) {
+        const videos = searchResponse.result.items;
+        nextPageToken = searchResponse.result.nextPageToken;
+
+        const videoIds = videos.map(function(video) {
+          return video.id.videoId;
+        });
+
+        // Make API request to get video statistics
+        const statsRequest = gapi.client.youtube.videos.list({
+          part: 'snippet,statistics',
+          id: videoIds.join(',')
+        });
+
+        statsRequest.execute(function(statsResponse) {
+          const videoStats = statsResponse.result.items;
+
+          // Display video results with channel name, view counts, and likes
+          videos.forEach(function(video) {
+            const videoId = video.id.videoId;
+            const stats = videoStats.find(function(item) {
+              return item.id === videoId;
+            });
+
+            const videoItem = createVideoItem(video, stats);
+            document.getElementById('results-container').appendChild(videoItem);
+          });
+
+          // Show/hide the load more button based on the presence of next page token
+          const loadMoreButton = document.getElementById('load-more-button');
+          if (nextPageToken) {
+            loadMoreButton.style.display = 'block';
+          } else {
+            loadMoreButton.style.display = 'none';
+          }
+        });
+      });
+    }
+
+    // Function to create a video item element
+    function createVideoItem(video, stats) {
+      const videoItem = document.createElement('div');
+      videoItem.classList.add('video-item');
+
+      const thumbnail = document.createElement('img');
+      thumbnail.src = video.snippet.thumbnails.medium.url;
+      videoItem.appendChild(thumbnail);
+
+      const title = document.createElement('h3');
+      title.textContent = video.snippet.title;
+      videoItem.appendChild(title);
+
+      const channel = document.createElement('div');
+      channel.classList.add('channel');
+      channel.textContent = video.snippet.channelTitle;
+      videoItem.appendChild(channel);
+
+      const views = document.createElement('div');
+      views.classList.add('views');
+      const viewCount = stats ? Number(stats.statistics.viewCount) : 0;
+      views.textContent = formatViewCount(viewCount);
+      videoItem.appendChild(views);
+
+      const likes = document.createElement('div');
+      likes.classList.add('likes');
+      const likeCount = stats ? Number(stats.statistics.likeCount) : 0;
+      likes.textContent = formatLikeCount(likeCount);
+      videoItem.appendChild(likes);
+
+      // Add click event listener to open the video in a new tab
+      videoItem.addEventListener('click', function() {
+        const videoUrl = 'https://www.youtube.com/watch?v=' + video.id.videoId;
+        window.open(videoUrl, '_blank');
+      });
+
+      return videoItem;
+    }
+
+    // Function to format the view count
+    function formatViewCount(viewCount) {
+      if (viewCount >= 1e9) {
+        return (viewCount / 1e9).toFixed(1) + 'B views';
+      } else if (viewCount >= 1e6) {
+        return (viewCount / 1e6).toFixed(1) + 'M views';
+      } else {
+        return viewCount + ' views';
+      }
+    }
+
+    // Function to format the like count
+    function formatLikeCount(likeCount) {
+      if (likeCount >= 1e9) {
+        return (likeCount / 1e9).toFixed(1) + 'B likes';
+      } else if (likeCount >= 1e6) {
+        return (likeCount / 1e6).toFixed(1) + 'M likes';
+      } else {
+        return likeCount + ' likes';
+      }
+    }
+
+    // Load YouTube Data API
+    gapi.load('client', function() {
+      gapi.client.init({
+        'apiKey': API_KEY,
+        'discoveryDocs': ['https://www.googleapis.com/discovery/v1/apis/youtube/v3/rest']
+      }).then(function() {
+        console.log('YouTube Data API initialized');
+      }, function(error) {
+        console.error('Error initializing YouTube Data API', error);
+      });
+    });
+  </script>
+</body>
+</html>
