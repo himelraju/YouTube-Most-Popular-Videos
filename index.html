@@ -7,7 +7,9 @@
 </head>
 
 <body class="font-sans bg-gray-100 p-4">
-    <h1 class="text-center text-gray-700 text-2xl mb-6">YouTube Most Popular Videos</h1>
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-center text-gray-700 text-2xl mb-6">YouTube Most Popular Videos</h1>
+    </div>
     <div id="search-container" class="text-center mb-6">
         <input type="text" id="search-input"
             class="p-2 border border-gray-300 rounded-md text-gray-800 focus:outline-none focus:border-blue-500"
@@ -15,10 +17,43 @@
         <button id="search-button"
             class="p-2 ml-2 bg-gray-800 text-white rounded-md cursor-pointer focus:outline-none">Search</button>
     </div>
+    <div id="settings-container" class="flex items-center justify-between mb-6">
+        <div>
+            <label class="text-gray-600">Sort By:</label>
+            <select id="sort-select"
+                class="ml-2 p-2 border border-gray-300 rounded-md text-gray-800 focus:outline-none focus:border-blue-500">
+                <option value="viewCount">Views</option>
+                <option value="date">Date</option>
+                <option value="rating">Rating</option>
+            </select>
+        </div>
+        <div>
+            <label class="text-gray-600">Results per Page:</label>
+            <select id="results-select"
+                class="ml-2 p-2 border border-gray-300 rounded-md text-gray-800 focus:outline-none focus:border-blue-500">
+                <option value="5">5</option>
+                <option value="10" selected>10</option>
+                <option value="20">20</option>
+            </select>
+        </div>
+        <div>
+            <label class="text-gray-600">Filter by Duration:</label>
+            <select id="duration-select"
+                class="ml-2 p-2 border border-gray-300 rounded-md text-gray-800 focus:outline-none focus:border-blue-500">
+                <option value="any">Any</option>
+                <option value="short">Short (<= 4 min)</option>
+                <option value="medium">Medium (4-20 min)</option>
+                <option value="long">Long (> 20 min)</option>
+            </select>
+        </div>
+    </div>
     <div id="results-container" class="flex flex-wrap justify-center"></div>
     <button id="load-more-button"
         class="hidden block mx-auto my-4 p-2 bg-gray-800 text-white rounded-md cursor-pointer focus:outline-none transition duration-200 hover:bg-gray-700">Load
         More</button>
+    <div id="video-player-container" class="hidden mt-8">
+        <iframe id="video-player" width="560" height="315" frameborder="0" allowfullscreen></iframe>
+    </div>
 
     <script src="https://apis.google.com/js/api.js"></script>
     <script>
@@ -26,10 +61,30 @@
         const API_KEY = 'AIzaSyB-8BDOg8abHE_p8oIs0NNGd_rjcWvzSqY';
         let nextPageToken = true;
         let currentKeyword = '';
+        let sortOption = 'viewCount';
+        let resultsPerPage = 10;
+        let durationFilter = 'any';
 
         // Search button click event handler
         document.getElementById('search-button').addEventListener('click', function () {
             currentKeyword = document.getElementById('search-input').value;
+            addToSearchHistory(currentKeyword);
+            searchVideos(currentKeyword);
+        });
+
+        // Sort, results per page, and duration filter change event handlers
+        document.getElementById('sort-select').addEventListener('change', function () {
+            sortOption = document.getElementById('sort-select').value;
+            searchVideos(currentKeyword);
+        });
+
+        document.getElementById('results-select').addEventListener('change', function () {
+            resultsPerPage = parseInt(document.getElementById('results-select').value, 10);
+            searchVideos(currentKeyword);
+        });
+
+        document.getElementById('duration-select').addEventListener('change', function () {
+            durationFilter = document.getElementById('duration-select').value;
             searchVideos(currentKeyword);
         });
 
@@ -50,8 +105,8 @@
                 part: 'snippet',
                 q: keyword,
                 type: 'video',
-                order: 'viewCount',
-                maxResults: 10,
+                order: sortOption,
+                maxResults: resultsPerPage,
                 pageToken: pageToken
             });
 
@@ -65,7 +120,7 @@
 
                 // Make API request to get video statistics
                 const statsRequest = gapi.client.youtube.videos.list({
-                    part: 'snippet,statistics',
+                    part: 'snippet,statistics,contentDetails',
                     id: videoIds.join(',')
                 });
 
@@ -79,8 +134,10 @@
                             return item.id === videoId;
                         });
 
-                        const videoItem = createVideoItem(video, stats);
-                        document.getElementById('results-container').appendChild(videoItem);
+                        if (filterVideoByDuration(stats.contentDetails.duration)) {
+                            const videoItem = createVideoItem(video, stats);
+                            document.getElementById('results-container').appendChild(videoItem);
+                        }
                     });
 
                     // Show/hide the load more button based on the presence of next page token
@@ -128,9 +185,12 @@
             likes.textContent = formatLikeCount(likeCount);
             videoItem.appendChild(likes);
 
-            // Add click event listener to open the video in a new tab
+            // Add click event listener to open the video in a new tab and play in the video player
             videoItem.addEventListener('click', function () {
                 const videoUrl = 'https://www.youtube.com/watch?v=' + video.id.videoId;
+                const videoPlayer = document.getElementById('video-player');
+                videoPlayer.src = `https://www.youtube.com/embed/${video.id.videoId}?autoplay=1`;
+                document.getElementById('video-player-container').classList.remove('hidden');
                 window.open(videoUrl, '_blank');
             });
 
@@ -159,6 +219,45 @@
             }
         }
 
+        // Function to filter videos by duration
+        function filterVideoByDuration(duration) {
+            const durationInSeconds = parseISO8601Duration(duration);
+            switch (durationFilter) {
+                case 'short':
+                    return durationInSeconds <= 240; // 4 minutes
+                case 'medium':
+                    return durationInSeconds > 240 && durationInSeconds <= 1200; // 4-20 minutes
+                case 'long':
+                    return durationInSeconds > 1200; // > 20 minutes
+                default:
+                    return true; // Any duration
+            }
+        }
+
+        // Function to parse ISO 8601 duration format (PT5M30S)
+        function parseISO8601Duration(duration) {
+            const matches = duration.match(/PT(\d+H)?(\d+M)?(\d+S)?/);
+
+            const hours = matches[1] ? parseInt(matches[1], 10) : 0;
+            const minutes = matches[2] ? parseInt(matches[2], 10) : 0;
+            const seconds = matches[3] ? parseInt(matches[3], 10) : 0;
+
+            return hours * 3600 + minutes * 60 + seconds;
+        }
+
+        // Function to add search keyword to search history
+        function addToSearchHistory(keyword) {
+            const historyList = document.getElementById('search-history-list');
+            const listItem = document.createElement('li');
+            listItem.textContent = keyword;
+            listItem.classList.add('cursor-pointer', 'hover:text-blue-500');
+            listItem.addEventListener('click', function () {
+                document.getElementById('search-input').value = keyword;
+                searchVideos(keyword);
+            });
+            historyList.appendChild(listItem);
+        }
+
         // Load YouTube Data API
         gapi.load('client', function () {
             gapi.client.init({
@@ -166,6 +265,8 @@
                 'discoveryDocs': ['https://www.googleapis.com/discovery/v1/apis/youtube/v3/rest']
             }).then(function () {
                 console.log('YouTube Data API initialized');
+                // Initial search on page load
+                searchVideos('music');
             }, function (error) {
                 console.error('Error initializing YouTube Data API', error);
             });
